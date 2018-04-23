@@ -80,22 +80,27 @@ class MessageSink(object):
             compressed_record = cls._compress_record(raw, record)
             logger.debug('Events for {0} compressed from {1} to {2} bytes (with JSON framing)'.format(i_source, size, len(compressed_record)))
 
-            if len(compressed_record) * 1.2 > constant.MAX_RECORD_SIZE: # Add multiplier to increase split_count by 20%
-                # This approach naievely hopes that splitting a record into even parts will put it
-                # below the max record size. Further tuning may be required.
-                split_count = math.ceil(len(compressed_record) * 1.2 / constant.MAX_RECORD_SIZE)
-                logger.warning('Compressed record size of {0} bytes exceeds maximum Firehose record size of {1} bytes; splitting into {2} records'.format(
-                    len(compressed_record),
-                    constant.MAX_RECORD_SIZE,
-                    split_count
-                ))
-                start = 0
-                size = int(len(record['logEvents']) / split_count)
-                while start < len(record['logEvents']):
-                    record_part = cls._prepare_record(i_source, record['logEvents'][start:start+size], message_class.name, account)
-                    compressed_record = cls._compress_record(raw, record_part)
-                    spool.write(compressed_record)
-                    start += size
+            if len(compressed_record) > constant.MAX_RECORD_SIZE:
+                data = record['logEvents']
+
+                while data:
+                    cursor = 1
+                    old_compressed_record = None
+
+                    while True:
+                        record_part = cls._prepare_record(i_source, data[0:cursor], message_class.name, account)
+                        new_compressed_record = cls._compress_record(raw, record_part)
+
+                        if len(new_compressed_record) > constant.MAX_RECORD_SIZE or len(data) == cursor:
+                            if old_compressed_record:
+                                spool.write(old_compressed_record)
+                            else:
+                                logger.warning("Record {0} cannot be written".format(record_part))
+                            data = data[cursor:]
+                            break
+                        else:
+                            cursor += 1
+                            old_compressed_record = new_compressed_record
             else:
                 spool.write(compressed_record)
 

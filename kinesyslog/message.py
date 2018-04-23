@@ -2,7 +2,7 @@ import logging
 import re
 from datetime import datetime, timedelta
 
-from libuuid import uuid4
+from uuid import uuid4
 
 import ujson as json
 
