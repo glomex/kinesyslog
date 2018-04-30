@@ -10,11 +10,14 @@ from botocore.config import Config
 
 from .util import get_region
 
+import redis
+
 FLUSH_TIME = 60
 MAX_REQUEST_SIZE = 1024 * 1024 * 4
 MAX_RECORD_COUNT = 500
 logger = logging.getLogger(__name__)
 lock = Lock()
+redis = redis.from_url(os.getenv('REDIS_URL'))
 
 
 class EventSpool(object):
@@ -72,6 +75,8 @@ class EventSpool(object):
                         try:
                             session = Session(profile_name=self.profile_name)
                             client = session.client('firehose', config=self.config)
+                            n = request_kwargs['Records'][0]['Data'].decode().count('\n')
+                            redis.incr('kinesyslog', n)
                             response = client.put_record_batch(**request_kwargs)
                         except Exception:
                             logger.error('Firehose put_record_batch failed', exc_info=True)
